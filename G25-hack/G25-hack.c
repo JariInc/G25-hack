@@ -116,6 +116,12 @@ void SetupHardware(void)
 	// CS (PB0) as output
 	DDRB |= (1 << DDB0);
 	PORTB |= (1 << DDB0);
+	
+	// PWM
+	DDRB |= 1 << PB7;
+	TCCR1A |= (1 << WGM11)|(1 << WGM10)|(1 << COM1C1)|(1 << COM1C0);
+	TCCR1B |= (1 << WGM12)|(0 << WGM13)|(0 << CS12)|(0 << CS11)|(1 << CS10);
+	OCR1C = 512;
 }
 
 /** Event handler for the library USB Connection event. */
@@ -141,7 +147,13 @@ void EVENT_USB_Device_ConfigurationChanged(void)
 /** Event handler for the library USB Control Request reception event. */
 void EVENT_USB_Device_ControlRequest(void)
 {
-	HID_Device_ProcessControlRequest(&Joystick_HID_Interface);
+	//HID_Device_ProcessControlRequest(&Joystick_HID_Interface);
+	if (USB_ControlRequest.bmRequestType == 64) {
+		OCR1C = USB_ControlRequest.wValue;
+		Endpoint_ClearStatusStage();
+	}
+	else
+		HID_Device_ProcessControlRequest(&Joystick_HID_Interface);
 }
 
 /** Event handler for the USB device Start Of Frame event. */
@@ -175,6 +187,7 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 	JoystickReport->Button = ((PIND >> 2) & 0b11) ^ 0b11;
 	
 	*ReportSize = sizeof(USB_JoystickReport_Data_t);
+	
 	return false;
 }
 
@@ -202,7 +215,7 @@ ISR(INT0_vect) {
 		wheelpos++;
 	else
 		wheelpos--;
-		
+	
 	// clear flag(s)
 	EIFR |= (1 << INT0);
 }
