@@ -41,6 +41,7 @@
 		#include <avr/wdt.h>
 		#include <avr/power.h>
 		#include <avr/interrupt.h>
+		#include <util/atomic.h>
 		#include <string.h>
 
 		#include "Descriptors.h"

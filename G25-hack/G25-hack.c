@@ -118,10 +118,14 @@ void SetupHardware(void)
 	PORTB |= (1 << DDB0);
 	
 	// PWM
-	DDRB |= 1 << PB7;
-	TCCR1A |= (1 << WGM11)|(1 << WGM10)|(1 << COM1C1)|(1 << COM1C0);
-	TCCR1B |= (1 << WGM12)|(0 << WGM13)|(0 << CS12)|(0 << CS11)|(1 << CS10);
-	OCR1C = 512;
+	DDRC |= 1 << PC6;
+	
+	TCCR1A |= (1 << COM1A1)|(0 << COM1A0); // set Compare Output Mode
+	TCCR1A |= (1 << WGM11)|(1 << WGM10); // set Waveform Generation Mode
+	TCCR1B |= (1 << WGM12)|(0 << WGM13);
+	TCCR1B |= (0 << CS12)|(0 << CS11)|(1 << CS10); // Set prescaler
+	
+	OCR1A = 512;
 }
 
 /** Event handler for the library USB Connection event. */
@@ -149,7 +153,10 @@ void EVENT_USB_Device_ControlRequest(void)
 {
 	//HID_Device_ProcessControlRequest(&Joystick_HID_Interface);
 	if (USB_ControlRequest.bmRequestType == 64) {
-		OCR1C = USB_ControlRequest.wValue;
+		ATOMIC_BLOCK(ATOMIC_FORCEON)
+		{
+			OCR1A = USB_ControlRequest.wValue & 1023;
+		}
 		Endpoint_ClearStatusStage();
 	}
 	else
