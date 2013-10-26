@@ -65,7 +65,8 @@
 		} USB_JoystickReport_Data_t;
 
 	/* Macros: */
-
+		#define ASM_NOP() asm volatile ("nop" :: ) 
+		
 	/* Function Prototypes: */
 		void SetupHardware(void);
 		uint16_t ADCGetValue(uint8_t ch);
