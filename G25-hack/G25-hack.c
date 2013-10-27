@@ -71,10 +71,10 @@ USB_ClassInfo_HID_Device_t Joystick_HID_Interface =
  */
 int main(void)
 {
+	
 	SetupHardware();
 	GlobalInterruptEnable();
-	WheelCalibration();
-
+	
 	for (;;)
 	{
 		HID_Device_USBTask(&Joystick_HID_Interface);
@@ -142,6 +142,9 @@ void SetupHardware(void)
 	TCCR1B |= (0 << CS12)|(0 << CS11)|(1 << CS10); // Set prescaler
 	OCR1A = 0; // set zero 
 	
+	GlobalInterruptEnable();
+	WheelCalibration();
+	GlobalInterruptDisable();
 	/* 
 		USB Initialization
 	*/
@@ -217,14 +220,14 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 	USB_JoystickReport_Data_t* JoystickReport = (USB_JoystickReport_Data_t*)ReportData;
 	
 	JoystickReport->Wheel = wheelpos;
-	JoystickReport->Throttle = (int16_t)ADCGetValue(0);
-	JoystickReport->Brake = (int16_t)ADCGetValue(1);
-	JoystickReport->Clutch = (int16_t)ADCGetValue(2);
+	JoystickReport->Throttle = 0xfff - (int16_t)ADCGetValue(0);
+	JoystickReport->Brake = 0xfff - (int16_t)ADCGetValue(1);
+	JoystickReport->Clutch = 0xfff - (int16_t)ADCGetValue(2);
 	JoystickReport->Button = ((PIND >> 2) & 0b11) ^ 0b11; // read button states and invert them
 	
 	*ReportSize = sizeof(USB_JoystickReport_Data_t);
 	
-	return false;
+	return true;
 }
 
 /** HID class driver callback function for the processing of HID reports from the host.
