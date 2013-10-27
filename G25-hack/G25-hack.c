@@ -87,11 +87,10 @@ void SetupHardware(void)
 
 	/* Disable clock division */
 	clock_prescale_set(clock_div_1);
-
-	/* Hardware Initialization */
-	USB_Init();
 	
-	/* Encoder interrupts */
+	/* 
+		Encoder interrupts 
+	*/
 	// set pins as inputs
 	DDRD &= ~(1 << DDD0);
 	DDRD &= ~(1 << DDD1);
@@ -106,36 +105,43 @@ void SetupHardware(void)
 	// enable interrupts
 	EIMSK |= (1 << INT0) | (1 << INT1);
 	
-	// Button inputs
+	/* 
+		Buttons 
+	*/
+	// set as inputs
 	DDRD &= ~(1 << DDD2);
 	DDRD &= ~(1 << DDD3);
-	PORTD |= (1 << DDD2) | (1 << DDD3);
+	PORTD |= (1 << DDD2) | (1 << DDD3); 
 	
-	// SPI
+	/*
+		SPI (using LUFA helper)
+	*/
 	SPI_Init(SPI_MODE_MASTER | SPI_SPEED_FCPU_DIV_8);
 	// CS (PB0) as output
 	DDRB |= (1 << DDB0);
 	PORTB |= (1 << DDB0);
 	
-	// MOTOR CONTROL
-	//DDRB |= (0b11 << DDB6); // set output
-	//PORTB &= ~(0b11 << DDB6); // set zero
+	/* 
+		H-bridge control 
+	*/
+	DDRB |= (1 << DDB4)|(1 << DDB5); // direction pins as outputs
+	PORTB &= ~(1 << DDB4); // set low
+	PORTB &= ~(1 << DDB5); // set low
 	
-	// PWM
-	DDRC |= 1 << PC6;
+	/* 
+		PWM
+	*/
+	DDRC |= 1 << PC6; // set pin as output
 	TCCR1A |= (1 << COM1A1)|(0 << COM1A0); // set Compare Output Mode
 	TCCR1A |= (1 << WGM11)|(1 << WGM10); // set Waveform Generation Mode
 	TCCR1B |= (1 << WGM12)|(0 << WGM13);
 	TCCR1B |= (0 << CS12)|(0 << CS11)|(1 << CS10); // Set prescaler
-	OCR1A = 0;
+	OCR1A = 0; // set zero
 	
-	// dddddd
-	DDRB |= (1 << DDB4)|(1 << DDB5);
-	//PORTB &= ~(1 << DDB4);
-	//PORTB &= ~(1 << DDB5);
-	PORTB |= (1 << DDB5);
-	
-	
+	/* 
+		USB Initialization 
+	*/
+	USB_Init();
 }
 
 /** Event handler for the library USB Connection event. */
