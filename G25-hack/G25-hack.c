@@ -42,6 +42,9 @@ static uint8_t PrevJoystickHIDReportBuffer[sizeof(USB_JoystickReport_Data_t)];
 // wheel position
 static int16_t wheelpos = 0;
 
+// force offset
+//static uint8_t forceoffset = 0;
+
 /** LUFA HID Class driver interface configuration and state information. This structure is
  *  passed to all HID Class driver functions, so that multiple instances of the same class
  *  within a device can be differentiated from one another.
@@ -69,7 +72,7 @@ USB_ClassInfo_HID_Device_t Joystick_HID_Interface =
 int main(void)
 {
 	SetupHardware();
-	GlobalInterruptEnable();
+	//GlobalInterruptEnable();
 
 	for (;;)
 	{
@@ -138,6 +141,12 @@ void SetupHardware(void)
 	TCCR1B |= (0 << CS12)|(0 << CS11)|(1 << CS10); // Set prescaler
 	OCR1A = 0; // set zero 
 	
+	/*
+		Calibration
+	*/
+	GlobalInterruptEnable();
+	WheelCalibration();
+	
 	/* 
 		USB Initialization
 	*/
@@ -171,21 +180,30 @@ void EVENT_USB_Device_ControlRequest(void)
 	if (USB_ControlRequest.bmRequestType == 64) {
 		// zero torque, disable motors
 		if(USB_ControlRequest.wValue == 0) {
+			/*
 			PORTB &= ~(1 << DDB4);
 			PORTB &= ~(1 << DDB5);
 			OCR1A = 0;
+			*/
+			FORCE_STOP();
 		}
 		// sign bit 0 (positive force)
 		if(USB_ControlRequest.wValue >> 15 == 0) {
+			/*
 			 PORTB |= (1 << DDB4);
 			 PORTB &= ~(1 << DDB5);
 			 OCR1A = USB_ControlRequest.wValue & 1023;
+			 */
+			FORCE_LEFT(USB_ControlRequest.wValue);
 		}
 		// sign bit 1 (negative force)
 		else if(USB_ControlRequest.wValue >> 15 == 1) {
+			/*
 			PORTB &= ~(1 << DDB4);
 			PORTB |= (1 << DDB5);
 			OCR1A = ((USB_ControlRequest.wValue ^ 0xffff) + 1) & 1023; // abs() = XOR + 1
+			*/
+			FORCE_RIGHT((USB_ControlRequest.wValue ^ 0xffff) + 1); // abs() = XOR + 1
 		}
 		
 		Endpoint_ClearStatusStage();
@@ -281,4 +299,74 @@ uint16_t ADCGetValue(uint8_t ch) {
 	output |= SPI_TransferByte(0xff); // read rest
 	PORTB |= (1 << DDB0); // CS high to deactivate
 	return output & 0xfff;
+}
+
+void WheelCalibration() {
+	/*
+		Calibration procedure:
+			1. Rotate left until limit is reached
+			2. Mark position 0
+			3. Move right until right limit is reached
+			4. Get position on right edge, offset position by half of the value
+			   - Presume center is between left and right edge
+			5. Rotate back to center
+	*/
+	
+	//forceoffset = 0;
+	wheelpos = 0;
+	int16_t prev_wheelpos = wheelpos;
+	uint16_t velocity = 0;
+	//int16_t force = 0;
+	
+	/* Find minimum force, needed at all?
+	// step 0
+	do {
+		force += 2;
+		FORCE_LEFT(force);
+		_delay_ms(CALIBDELAY);
+		velocity = wheelpos - prev_wheelpos;
+		prev_wheelpos = wheelpos;
+	} while (velocity < 1);
+	forceoffset = force;
+	*/
+	
+	// step 1
+	do {
+		FORCE_LEFT(768);
+		_delay_ms(CALIBDELAY);
+		velocity = wheelpos - prev_wheelpos;
+		prev_wheelpos = wheelpos;
+	} while (velocity > 0);
+	FORCE_STOP();
+	
+	// step 2
+	wheelpos = 0;
+	prev_wheelpos = 0;
+	
+	// step 3
+	do {
+		FORCE_RIGHT(768);
+		_delay_ms(CALIBDELAY);
+		velocity = prev_wheelpos - wheelpos;
+		prev_wheelpos = wheelpos;
+	} while (velocity > 0);
+	
+	FORCE_STOP();
+	
+	// step 4
+	wheelpos = (wheelpos >> 1);
+	
+	// step 5
+	do {
+		FORCE_LEFT(1023);
+		_delay_ms(CALIBDELAY);
+	} while (wheelpos < 0);
+	
+	// brake and slowly rotate to center
+	do {
+		FORCE_RIGHT(256);
+		_delay_ms(CALIBDELAY);
+	} while (wheelpos > 0);
+	
+	FORCE_STOP();
 }

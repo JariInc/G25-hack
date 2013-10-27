@@ -42,6 +42,7 @@
 		#include <avr/power.h>
 		#include <avr/interrupt.h>
 		#include <util/atomic.h>
+		#include <util/delay.h>
 		#include <string.h>
 
 		#include "Descriptors.h"
@@ -65,11 +66,23 @@
 		} USB_JoystickReport_Data_t;
 
 	/* Macros: */
-		#define ASM_NOP() asm volatile ("nop" :: ) 
+		#define FORCE_LEFT(value)	PORTB |= (1 << DDB4); \
+									PORTB &= ~(1 << DDB5);\
+									OCR1A = (value) & 1023;
+		#define FORCE_RIGHT(value)	PORTB &= ~(1 << DDB4);\
+									PORTB |= (1 << DDB5);\
+									OCR1A = (value) & 1023;
+		#define FORCE_STOP()		PORTB &= ~(1 << DDB4);\
+									PORTB &= ~(1 << DDB5);\
+									OCR1A = 0;
+									
+		// how long (ms) to wait before checking wheel position for movement, 3 too low, 4 works, 5 safe
+		#define CALIBDELAY	5
 		
 	/* Function Prototypes: */
 		void SetupHardware(void);
 		uint16_t ADCGetValue(uint8_t ch);
+		void WheelCalibration();
 
 		void EVENT_USB_Device_Connect(void);
 		void EVENT_USB_Device_Disconnect(void);
