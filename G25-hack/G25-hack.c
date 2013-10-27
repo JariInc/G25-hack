@@ -72,7 +72,8 @@ USB_ClassInfo_HID_Device_t Joystick_HID_Interface =
 int main(void)
 {
 	SetupHardware();
-	//GlobalInterruptEnable();
+	GlobalInterruptEnable();
+	WheelCalibration();
 
 	for (;;)
 	{
@@ -141,12 +142,6 @@ void SetupHardware(void)
 	TCCR1B |= (0 << CS12)|(0 << CS11)|(1 << CS10); // Set prescaler
 	OCR1A = 0; // set zero 
 	
-	/*
-		Calibration
-	*/
-	GlobalInterruptEnable();
-	WheelCalibration();
-	
 	/* 
 		USB Initialization
 	*/
@@ -180,29 +175,14 @@ void EVENT_USB_Device_ControlRequest(void)
 	if (USB_ControlRequest.bmRequestType == 64) {
 		// zero torque, disable motors
 		if(USB_ControlRequest.wValue == 0) {
-			/*
-			PORTB &= ~(1 << DDB4);
-			PORTB &= ~(1 << DDB5);
-			OCR1A = 0;
-			*/
 			FORCE_STOP();
 		}
 		// sign bit 0 (positive force)
 		if(USB_ControlRequest.wValue >> 15 == 0) {
-			/*
-			 PORTB |= (1 << DDB4);
-			 PORTB &= ~(1 << DDB5);
-			 OCR1A = USB_ControlRequest.wValue & 1023;
-			 */
 			FORCE_LEFT(USB_ControlRequest.wValue);
 		}
 		// sign bit 1 (negative force)
 		else if(USB_ControlRequest.wValue >> 15 == 1) {
-			/*
-			PORTB &= ~(1 << DDB4);
-			PORTB |= (1 << DDB5);
-			OCR1A = ((USB_ControlRequest.wValue ^ 0xffff) + 1) & 1023; // abs() = XOR + 1
-			*/
 			FORCE_RIGHT((USB_ControlRequest.wValue ^ 0xffff) + 1); // abs() = XOR + 1
 		}
 		
@@ -306,14 +286,13 @@ void WheelCalibration() {
 		Calibration procedure:
 			1. Rotate left until limit is reached
 			2. Mark position 0
-			3. Move right until right limit is reached
+			3. Rotate right until limit is reached
 			4. Get position on right edge, offset position by half of the value
 			   - Presume center is between left and right edge
 			5. Rotate back to center
 	*/
 	
 	//forceoffset = 0;
-	wheelpos = 0;
 	int16_t prev_wheelpos = wheelpos;
 	uint16_t velocity = 0;
 	//int16_t force = 0;
