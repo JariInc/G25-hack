@@ -136,10 +136,10 @@ void SetupHardware(void)
 	TCCR1A |= (1 << WGM11)|(1 << WGM10); // set Waveform Generation Mode
 	TCCR1B |= (1 << WGM12)|(0 << WGM13);
 	TCCR1B |= (0 << CS12)|(0 << CS11)|(1 << CS10); // Set prescaler
-	OCR1A = 0; // set zero
+	OCR1A = 0; // set zero 
 	
 	/* 
-		USB Initialization 
+		USB Initialization
 	*/
 	USB_Init();
 }
@@ -169,20 +169,23 @@ void EVENT_USB_Device_ControlRequest(void)
 {
 	//HID_Device_ProcessControlRequest(&Joystick_HID_Interface);
 	if (USB_ControlRequest.bmRequestType == 64) {
+		// zero torque, disable motors
 		if(USB_ControlRequest.wValue == 0) {
-			PORTB &= ~(1 << DDB4); ASM_NOP();
-			PORTB &= ~(1 << DDB5); ASM_NOP();
+			PORTB &= ~(1 << DDB4);
+			PORTB &= ~(1 << DDB5);
 			OCR1A = 0;
 		}
+		// sign bit 0 (positive force)
 		if(USB_ControlRequest.wValue >> 15 == 0) {
-			 PORTB |= (1 << DDB4); ASM_NOP();
-			 PORTB &= ~(1 << DDB5); ASM_NOP();
+			 PORTB |= (1 << DDB4);
+			 PORTB &= ~(1 << DDB5);
 			 OCR1A = USB_ControlRequest.wValue & 1023;
 		}
+		// sign bit 1 (negative force)
 		else if(USB_ControlRequest.wValue >> 15 == 1) {
-			PORTB &= ~(1 << DDB4); ASM_NOP();
-			PORTB |= (1 << DDB5); ASM_NOP();
-			OCR1A = (USB_ControlRequest.wValue ^ 0xffff) & 1023;
+			PORTB &= ~(1 << DDB4);
+			PORTB |= (1 << DDB5);
+			OCR1A = ((USB_ControlRequest.wValue ^ 0xffff) + 1) & 1023; // abs() = XOR + 1
 		}
 		
 		Endpoint_ClearStatusStage();
@@ -219,7 +222,7 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 	JoystickReport->Throttle = (int16_t)ADCGetValue(0);
 	JoystickReport->Brake = (int16_t)ADCGetValue(1);
 	JoystickReport->Clutch = (int16_t)ADCGetValue(2);
-	JoystickReport->Button = ((PIND >> 2) & 0b11) ^ 0b11;
+	JoystickReport->Button = ((PIND >> 2) & 0b11) ^ 0b11; // read button states and invert them
 	
 	*ReportSize = sizeof(USB_JoystickReport_Data_t);
 	
@@ -246,34 +249,36 @@ void CALLBACK_HID_Device_ProcessHIDReport(USB_ClassInfo_HID_Device_t* const HIDI
 // encoder interrupt handlers
 ISR(INT0_vect) {
 	uint8_t pins = PIND & ((1 << PD0) | (1 << PD1));
+	
 	if(pins == 0b11 || pins == 0b00)
 		wheelpos++;
 	else
 		wheelpos--;
 	
-	// clear flag(s)
+	// clear flag
 	EIFR |= (1 << INT0);
 }
 
 ISR(INT1_vect)
 {
 	uint8_t pins = PIND & ((1 << PD0) | (1 << PD1));
+	
 	if(pins == 0b11 || pins == 0b00)
 		wheelpos--;
 	else
 		wheelpos++;
 
-	// clear flag(s)
+	// clear flag
 	EIFR |= (1 << INT1);
 }
 
-// ADC
+// ADC (MCP3204)
 uint16_t ADCGetValue(uint8_t ch) {
 	uint16_t output = 0;
-	PORTB &= ~(1 << DDB0);
-	SPI_SendByte(0b00000110);
-	output = SPI_TransferByte(ch << 6) << 8;
-	output |= SPI_TransferByte(0xff);
-	PORTB |= (1 << DDB0);
+	PORTB &= ~(1 << DDB0); // CS low to activate
+	SPI_SendByte(0b00000110); // start conversion command
+	output = SPI_TransferByte(ch << 6) << 8; // read 4 MSB
+	output |= SPI_TransferByte(0xff); // read rest
+	PORTB |= (1 << DDB0); // CS high to deactivate
 	return output & 0xfff;
 }
