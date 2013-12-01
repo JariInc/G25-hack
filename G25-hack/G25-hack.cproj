@@ -5,7 +5,7 @@
     <ProjectVersion>6.1</ProjectVersion>
     <ToolchainName>com.Atmel.AVRGCC8.C</ToolchainName>
     <ProjectGuid>{c73e78c6-6155-4203-93c6-b94bd868663f}</ProjectGuid>
-    <avrdevice>AT90USB162</avrdevice>
+    <avrdevice>AT90USB1286</avrdevice>
     <avrdeviceseries>none</avrdeviceseries>
     <OutputType>Executable</OutputType>
     <Language>C</Language>
@@ -28,9 +28,9 @@
     <AsfFrameworkConfig>
       <framework-data>
   <options>
+    <option id="lufa.drivers.peripheral.spi" value="Add" config="" content-id="0e160d5c-e331-48d9-850b-e0387912171b" />
     <option id="lufa.drivers.usb" value="Add" config="" content-id="0e160d5c-e331-48d9-850b-e0387912171b" />
     <option id="lufa.platform" value="Add" config="" content-id="0e160d5c-e331-48d9-850b-e0387912171b" />
-    <option id="lufa.drivers.peripheral.spi" value="Add" config="" content-id="0e160d5c-e331-48d9-850b-e0387912171b" />
   </options>
   <configurations>
     <configuration key="lufa.drivers.usb.class.android.mode" value="host" default="host" content-id="0e160d5c-e331-48d9-850b-e0387912171b" />
@@ -158,7 +158,6 @@
   <offline-documentation help="" />
   <dependencies>
     <content-extension eid="0e160d5c-e331-48d9-850b-e0387912171b" uuidref="0e160d5c-e331-48d9-850b-e0387912171b" version="13.09.01" />
-    <content-extension eid="atmel.asf" uuidref="Atmel.ASF" version="3.11.0" />
   </dependencies>
 </framework-data>
     </AsfFrameworkConfig>
@@ -168,18 +167,20 @@
         <InterfaceProperties>
           <JtagEnableExtResetOnStartSession>false</JtagEnableExtResetOnStartSession>
           <IspClock>2000000</IspClock>
+          <JtagDbgClock>1000000</JtagDbgClock>
         </InterfaceProperties>
-        <InterfaceName>ISP</InterfaceName>
+        <InterfaceName>JTAG</InterfaceName>
       </ToolOptions>
       <ToolType>com.atmel.avrdbg.tool.avrdragon</ToolType>
       <ToolNumber>00A20003517A</ToolNumber>
       <ToolName>AVR Dragon</ToolName>
     </com_atmel_avrdbg_tool_avrdragon>
-    <avrtoolinterface>ISP</avrtoolinterface>
+    <avrtoolinterface>JTAG</avrtoolinterface>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
     <ToolchainSettings>
       <AvrGcc>
+        <avrgcc.common.optimization.RelaxBranches>True</avrgcc.common.optimization.RelaxBranches>
         <avrgcc.common.outputfiles.hex>True</avrgcc.common.outputfiles.hex>
         <avrgcc.common.outputfiles.lss>True</avrgcc.common.outputfiles.lss>
         <avrgcc.common.outputfiles.eep>True</avrgcc.common.outputfiles.eep>
@@ -220,6 +221,7 @@
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <ToolchainSettings>
       <AvrGcc>
+        <avrgcc.common.optimization.RelaxBranches>True</avrgcc.common.optimization.RelaxBranches>
         <avrgcc.common.outputfiles.hex>True</avrgcc.common.outputfiles.hex>
         <avrgcc.common.outputfiles.lss>True</avrgcc.common.outputfiles.lss>
         <avrgcc.common.outputfiles.eep>True</avrgcc.common.outputfiles.eep>
@@ -290,6 +292,12 @@
     <None Include="src\LUFA\LUFA\Drivers\Peripheral\AVR8\SPI_AVR8.h">
       <SubType>compile</SubType>
     </None>
+    <Compile Include="pid.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="pid.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="src\LUFA\LUFA\Drivers\USB\Class\Common\HIDParser.c">
       <SubType>compile</SubType>
     </Compile>

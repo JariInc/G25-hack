@@ -35,12 +35,16 @@
  */
 
 #include "G25-hack.h"
+#include "pid.h"
 
 /** Buffer to hold the previously generated HID report, for comparison purposes inside the HID class driver. */
 static uint8_t PrevJoystickHIDReportBuffer[sizeof(USB_JoystickReport_Data_t)];
 
 // wheel position
 static int16_t wheelpos = 0;
+
+// current offset
+static int16_t currentoffset = 0;
 
 // force offset
 //static uint8_t forceoffset = 0;
@@ -128,23 +132,40 @@ void SetupHardware(void)
 	/* 
 		H-bridge control 
 	*/
+	/*
 	DDRB |= (1 << DDB4)|(1 << DDB5); // direction pins as outputs
 	PORTB &= ~(1 << DDB4); // set low
 	PORTB &= ~(1 << DDB5); // set low
-	
+	*/
 	/* 
 		PWM
 	*/
-	DDRC |= 1 << PC6; // set pin as output
-	TCCR1A |= (1 << COM1A1)|(0 << COM1A0); // set Compare Output Mode
 	TCCR1A |= (1 << WGM11)|(1 << WGM10); // set Waveform Generation Mode
 	TCCR1B |= (1 << WGM12)|(0 << WGM13);
 	TCCR1B |= (0 << CS12)|(0 << CS11)|(1 << CS10); // Set prescaler
-	OCR1A = 0; // set zero 
+	
+	DDRB |= 1 << PB7; // set pin as output
+	TCCR1A |= (1 << COM1C1)|(0 << COM1C0); // set Compare Output Mode
+	OCR1C = 0; // set zero 
+	
+	DDRB |= 1 << PB6; // set pin as output
+	TCCR1A |= (1 << COM1B1)|(0 << COM1B0); // set Compare Output Mode
+	OCR1B = 0; // set zero 
 	
 	GlobalInterruptEnable();
 	WheelCalibration();
 	GlobalInterruptDisable();
+	
+	/*
+		Current offset
+	*/
+	currentoffset = 0;
+	for(int i=0; i < (1 << 3); i++) {
+		currentoffset += (int16_t)ADCGetValue(3);
+		_delay_ms(5);
+	}
+	currentoffset >>= 3;
+	
 	/* 
 		USB Initialization
 	*/
@@ -176,19 +197,31 @@ void EVENT_USB_Device_ControlRequest(void)
 {
 	//HID_Device_ProcessControlRequest(&Joystick_HID_Interface);
 	if (USB_ControlRequest.bmRequestType == 64) {
-		// zero torque, disable motors
-		if(USB_ControlRequest.wValue == 0) {
+		
+		// use union to represent received unsigned as signed integer
+		union {
+			int16_t sval;
+			uint16_t uval;
+		} force;
+		
+		force.uval = USB_ControlRequest.wValue;
+		
+		// zero disable motors
+		if(force.sval == 0) {
 			FORCE_STOP();
 		}
-		// sign bit 0 (positive force)
-		if(USB_ControlRequest.wValue >> 15 == 0) {
-			FORCE_LEFT(USB_ControlRequest.wValue);
+		else {
+			//uint16_t pid_value = pid(force.sval, (int16_t)ADCGetValue(3) - currentoffset);
+			
+			if(force.sval > 0) {
+				//FORCE_LEFT(pid_value);
+				FORCE_LEFT(force.sval);
+			}
+			else {
+				//FORCE_RIGHT((pid_value ^ 0xffff) + 1);
+				FORCE_RIGHT(-force.sval);
+			}
 		}
-		// sign bit 1 (negative force)
-		else if(USB_ControlRequest.wValue >> 15 == 1) {
-			FORCE_RIGHT((USB_ControlRequest.wValue ^ 0xffff) + 1); // abs() = XOR + 1
-		}
-		
 		Endpoint_ClearStatusStage();
 	}
 	else
@@ -222,7 +255,8 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 	JoystickReport->Wheel = wheelpos;
 	JoystickReport->Throttle = 0xfff - (int16_t)ADCGetValue(0);
 	JoystickReport->Brake = 0xfff - (int16_t)ADCGetValue(1);
-	JoystickReport->Clutch = 0xfff - (int16_t)ADCGetValue(2);
+	//JoystickReport->Clutch = 0xfff - (int16_t)ADCGetValue(2);
+	JoystickReport->Clutch = (int16_t)ADCGetValue(3) - currentoffset;
 	JoystickReport->Button = ((PIND >> 2) & 0b11) ^ 0b11; // read button states and invert them
 	
 	*ReportSize = sizeof(USB_JoystickReport_Data_t);
@@ -314,7 +348,15 @@ void WheelCalibration() {
 	
 	// step 1
 	do {
-		FORCE_LEFT(768);
+		// fast 3000 positions
+		// full speed 6000 positions
+		if(wheelpos > 3000) {
+			FORCE_LEFT(0x1ff);
+		}
+		// then slow down
+		else {
+			FORCE_LEFT(0x2ff);
+		}
 		_delay_ms(CALIBDELAY);
 		velocity = wheelpos - prev_wheelpos;
 		prev_wheelpos = wheelpos;
@@ -327,7 +369,14 @@ void WheelCalibration() {
 	
 	// step 3
 	do {
-		FORCE_RIGHT(768);
+		// full speed 6000 positions
+		if(wheelpos > -7500) {
+			FORCE_RIGHT(0x3ff);
+		}
+		// then slow down
+		else {
+			FORCE_RIGHT(0x1ff);
+		}
 		_delay_ms(CALIBDELAY);
 		velocity = prev_wheelpos - wheelpos;
 		prev_wheelpos = wheelpos;
@@ -340,13 +389,19 @@ void WheelCalibration() {
 	
 	// step 5
 	do {
-		FORCE_LEFT(1023);
+		if(wheelpos < -500) {
+			FORCE_LEFT(0x3ff);
+		}
+		// then slow down
+		else {
+			FORCE_LEFT(0xff);
+		}
 		_delay_ms(CALIBDELAY);
 	} while (wheelpos < 0);
 	
 	// brake and slowly rotate to center
 	do {
-		FORCE_RIGHT(256);
+		FORCE_RIGHT(0xff);
 		_delay_ms(CALIBDELAY);
 	} while (wheelpos > 0);
 	

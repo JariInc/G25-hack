@@ -66,16 +66,25 @@
 		} USB_JoystickReport_Data_t;
 
 	/* Macros: */
+		#define FORCE_LEFT(value)	OCR1B = (value) & 0x3ff;\
+									OCR1C = 0;
+									
+		#define FORCE_RIGHT(value)	OCR1B = 0;\
+									OCR1C = (value) & 0x3ff;
+									
+		#define FORCE_STOP()		OCR1B = 0;\
+									OCR1C = 0;
+	/*
 		#define FORCE_LEFT(value)	PORTB |= (1 << DDB4); \
 									PORTB &= ~(1 << DDB5);\
-									OCR1A = (value) & 1023;
+									OCR1C = (value) & 1023;
 		#define FORCE_RIGHT(value)	PORTB &= ~(1 << DDB4);\
 									PORTB |= (1 << DDB5);\
-									OCR1A = (value) & 1023;
+									OCR1C = (value) & 1023;
 		#define FORCE_STOP()		PORTB &= ~(1 << DDB4);\
 									PORTB &= ~(1 << DDB5);\
-									OCR1A = 0;
-									
+									OCR1C = 0;
+	*/								
 		// how long (ms) to wait before checking wheel position for movement, 3 too low, 4 works, 5 safe
 		#define CALIBDELAY	5
 		
