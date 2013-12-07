@@ -158,6 +158,7 @@
   <offline-documentation help="" />
   <dependencies>
     <content-extension eid="0e160d5c-e331-48d9-850b-e0387912171b" uuidref="0e160d5c-e331-48d9-850b-e0387912171b" version="13.09.01" />
+    <content-extension eid="atmel.asf" uuidref="Atmel.ASF" version="3.11.0" />
   </dependencies>
 </framework-data>
     </AsfFrameworkConfig>

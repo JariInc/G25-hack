@@ -44,10 +44,16 @@ static uint8_t PrevJoystickHIDReportBuffer[sizeof(USB_JoystickReport_Data_t)];
 static int16_t wheelpos = 0;
 
 // current offset
-static int16_t currentoffset = 0;
+static uint16_t currentoffset = 0;
 
 // force offset
 //static uint8_t forceoffset = 0;
+
+// debug
+//static int16_t dbg_fb = 0;
+
+// (requested) force value
+static int16_t force = 0;
 
 /** LUFA HID Class driver interface configuration and state information. This structure is
  *  passed to all HID Class driver functions, so that multiple instances of the same class
@@ -130,14 +136,6 @@ void SetupHardware(void)
 	PORTB |= (1 << DDB0);
 	
 	/* 
-		H-bridge control 
-	*/
-	/*
-	DDRB |= (1 << DDB4)|(1 << DDB5); // direction pins as outputs
-	PORTB &= ~(1 << DDB4); // set low
-	PORTB &= ~(1 << DDB5); // set low
-	*/
-	/* 
 		PWM
 	*/
 	TCCR1A |= (1 << WGM11)|(1 << WGM10); // set Waveform Generation Mode
@@ -157,15 +155,42 @@ void SetupHardware(void)
 	GlobalInterruptDisable();
 	
 	/*
+	// debug
+	DDRC |= (1 << DDC0);
+	PORTC |= (1 << DDC0);
+	PORTC &= ~(1 << DDC0);
+	*/
+
+	/*
 		Current offset
 	*/
-	currentoffset = 0;
-	for(int i=0; i < (1 << 3); i++) {
-		currentoffset += (int16_t)ADCGetValue(3);
-		_delay_ms(5);
+	// do conversion and wait a bit, otherwise first measurement is way off
+	ADCGetValue(3);
+	_delay_ms(10);
+
+	// find max
+	currentoffset = ADCGetValue(3);
+	uint8_t i = 0;
+	int16_t current = 0;
+	while(i < (1 << 3)) {
+		current = ADCGetValue(3) - currentoffset;
+		if(current > 0) {
+			currentoffset++;
+			i = 0;
+		}
+		else
+			i++;
+		_delay_ms(10);
 	}
-	currentoffset >>= 3;
 	
+	/*
+		PID timer
+	*/
+	TCCR2A |= (0 << COM2A1) | (0 << COM2A0); // Set OC2A on Compare Match
+	TCCR2B |= (1 << CS22) | (1 << CS21) | (0 << CS20); // set prescaler to 1/256
+	OCR2A = /*156*/ 62; // 16MHz / (62*256) = 1008 Hz
+	TIMSK2 |= (1 << OCIE2A); // Enable timer ISR
+
 	/* 
 		USB Initialization
 	*/
@@ -202,26 +227,10 @@ void EVENT_USB_Device_ControlRequest(void)
 		union {
 			int16_t sval;
 			uint16_t uval;
-		} force;
+		} forceval;
 		
-		force.uval = USB_ControlRequest.wValue;
-		
-		// zero disable motors
-		if(force.sval == 0) {
-			FORCE_STOP();
-		}
-		else {
-			//uint16_t pid_value = pid(force.sval, (int16_t)ADCGetValue(3) - currentoffset);
-			
-			if(force.sval > 0) {
-				//FORCE_LEFT(pid_value);
-				FORCE_LEFT(force.sval);
-			}
-			else {
-				//FORCE_RIGHT((pid_value ^ 0xffff) + 1);
-				FORCE_RIGHT(-force.sval);
-			}
-		}
+		forceval.uval = USB_ControlRequest.wValue;
+		force = forceval.sval;
 		Endpoint_ClearStatusStage();
 	}
 	else
@@ -255,10 +264,15 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 	JoystickReport->Wheel = wheelpos;
 	JoystickReport->Throttle = 0xfff - (int16_t)ADCGetValue(0);
 	JoystickReport->Brake = 0xfff - (int16_t)ADCGetValue(1);
-	//JoystickReport->Clutch = 0xfff - (int16_t)ADCGetValue(2);
-	JoystickReport->Clutch = (int16_t)ADCGetValue(3) - currentoffset;
+	JoystickReport->Clutch = 0xfff - (int16_t)ADCGetValue(2);
+	//JoystickReport->Clutch = ADCGetValue(3) - currentoffset;
 	JoystickReport->Button = ((PIND >> 2) & 0b11) ^ 0b11; // read button states and invert them
-	
+
+	/*
+	JoystickReport->Clutch = force;
+	JoystickReport->Brake = dbg_fb;
+	*/
+
 	*ReportSize = sizeof(USB_JoystickReport_Data_t);
 	
 	return true;
@@ -294,26 +308,16 @@ ISR(INT0_vect) {
 	EIFR |= (1 << INT0);
 }
 
-ISR(INT1_vect)
-{
-	uint8_t pins = PIND & ((1 << PD0) | (1 << PD1));
-	
-	if(pins == 0b11 || pins == 0b00)
-		wheelpos--;
-	else
-		wheelpos++;
-
-	// clear flag
-	EIFR |= (1 << INT1);
-}
-
 // ADC (MCP3204)
 uint16_t ADCGetValue(uint8_t ch) {
 	uint16_t output = 0;
-	PORTB &= ~(1 << DDB0); // CS low to activate
-	SPI_SendByte(0b00000110); // start conversion command
-	output = SPI_TransferByte(ch << 6) << 8; // read 4 MSB
-	output |= SPI_TransferByte(0xff); // read rest
+	ATOMIC_BLOCK(ATOMIC_FORCEON)
+	{
+		PORTB &= ~(1 << DDB0); // CS low to activate
+		SPI_SendByte(0b00000110); // start conversion command
+		output = SPI_TransferByte(ch << 6) << 8; // read 4 MSB
+		output |= SPI_TransferByte(0xff); // read rest
+	}
 	PORTB |= (1 << DDB0); // CS high to deactivate
 	return output & 0xfff;
 }
@@ -406,4 +410,39 @@ void WheelCalibration() {
 	} while (wheelpos > 0);
 	
 	FORCE_STOP();
+}
+
+/* Interrupts */
+// Optical encoder
+ISR(INT1_vect)
+{
+	uint8_t pins = PIND & ((1 << PD0) | (1 << PD1));
+	if(pins == 0b11 || pins == 0b00)
+	wheelpos--;
+	else
+	wheelpos++;
+}
+
+// PID timer
+ISR(TIMER2_COMPA_vect)
+{
+	uint16_t pid_value;
+	int16_t feedback = ADCGetValue(3) - currentoffset;
+	if(feedback < 0)
+		feedback = 0;
+	//dbg_fb = feedback;
+
+	if(force == 0) {
+		FORCE_STOP()
+	}
+	if(force > 0) {
+		pid_value = pid(force, feedback);
+		FORCE_LEFT(pid_value);
+	}
+	else {
+		pid_value = pid(-force, feedback);
+		FORCE_RIGHT(pid_value);
+	}
+	
+	TCNT2 = 0;
 }

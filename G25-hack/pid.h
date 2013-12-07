@@ -12,9 +12,11 @@
 #include <stdint.h>
 
 // tuning parameters Q0.15 signed fixed point
-#define Kp 0b000010000000000 /* 0.747 */
-#define Ki 0b000000000000000 /* 0.10 */
-#define Kd 0b000000000000000 /* 0.0001 */
+#define Kp (1 << 8) /* 0.747 */
+#define Ki 0 /* 0.10 */
+#define Kd 0 /* 0.0001 */
+
+#define PID_MAX 1023
 
 int16_t pid(int16_t input, int16_t feedback);
 
