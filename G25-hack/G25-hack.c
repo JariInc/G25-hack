@@ -295,19 +295,6 @@ void CALLBACK_HID_Device_ProcessHIDReport(USB_ClassInfo_HID_Device_t* const HIDI
 	// Unused (but mandatory for the HID class driver) in this demo, since there are no Host->Device reports
 }
 
-// encoder interrupt handlers
-ISR(INT0_vect) {
-	uint8_t pins = PIND & ((1 << PD0) | (1 << PD1));
-	
-	if(pins == 0b11 || pins == 0b00)
-		wheelpos++;
-	else
-		wheelpos--;
-	
-	// clear flag
-	EIFR |= (1 << INT0);
-}
-
 // ADC (MCP3204)
 uint16_t ADCGetValue(uint8_t ch) {
 	uint16_t output = 0;
@@ -354,7 +341,7 @@ void WheelCalibration() {
 	do {
 		// fast 3000 positions
 		// full speed 6000 positions
-		if(wheelpos > 3000) {
+		if(wheelpos < -3000) {
 			FORCE_LEFT(0x1ff);
 		}
 		// then slow down
@@ -373,8 +360,8 @@ void WheelCalibration() {
 	
 	// step 3
 	do {
-		// full speed 6000 positions
-		if(wheelpos > -7500) {
+		// full speed 7500 positions
+		if(wheelpos < 7500) {
 			FORCE_RIGHT(0x3ff);
 		}
 		// then slow down
@@ -393,7 +380,7 @@ void WheelCalibration() {
 	
 	// step 5
 	do {
-		if(wheelpos < -500) {
+		if(wheelpos > 500) {
 			FORCE_LEFT(0x3ff);
 		}
 		// then slow down
@@ -401,7 +388,7 @@ void WheelCalibration() {
 			FORCE_LEFT(0xff);
 		}
 		_delay_ms(CALIBDELAY);
-	} while (wheelpos < 0);
+	} while (wheelpos > 0);
 	
 	// brake and slowly rotate to center
 	do {
@@ -414,13 +401,20 @@ void WheelCalibration() {
 
 /* Interrupts */
 // Optical encoder
-ISR(INT1_vect)
-{
+ISR(INT0_vect) {
 	uint8_t pins = PIND & ((1 << PD0) | (1 << PD1));
 	if(pins == 0b11 || pins == 0b00)
-	wheelpos--;
+		wheelpos--;
 	else
-	wheelpos++;
+		wheelpos++;
+}
+
+ISR(INT1_vect) {
+	uint8_t pins = PIND & ((1 << PD0) | (1 << PD1));
+	if(pins == 0b11 || pins == 0b00)
+		wheelpos++;
+	else
+		wheelpos--;
 }
 
 // PID timer

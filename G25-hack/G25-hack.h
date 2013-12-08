@@ -74,7 +74,7 @@
 									
 		#define FORCE_STOP()		OCR1B = 0;\
 									OCR1C = 0;
-							
+																
 		// how long (ms) to wait before checking wheel position for movement, 3 too low, 4 works, 5 safe
 		#define CALIBDELAY	5
 		
