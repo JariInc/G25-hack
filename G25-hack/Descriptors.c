@@ -54,36 +54,47 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM JoystickReport[] =
 	 */
 	//HID_DESCRIPTOR_JOYSTICK(-100, 100, -1, 1, 2)
 	//HID_DESCRIPTOR_JOYSTICK(MinAxisVal, MaxAxisVal, MinPhysicalVal, MaxPhysicalVal, Buttons)
-	#define Buttons 4
-	HID_RI_USAGE_PAGE(8, 0x01),
-	HID_RI_USAGE(8, 0x05),
-	HID_RI_COLLECTION(8, 0x01),
-	HID_RI_USAGE(8, 0x01),
-	HID_RI_COLLECTION(8, 0x00),
-	HID_RI_USAGE(8, 0x30), // 0x30
-	HID_RI_USAGE(8, 0x31),
-	HID_RI_USAGE(8, 0x32),
-	HID_RI_USAGE(8, 0x33),
-	HID_RI_LOGICAL_MINIMUM(16, -5120),
-	HID_RI_LOGICAL_MAXIMUM(16, 5120),
-	HID_RI_PHYSICAL_MINIMUM(16, -1),
-	HID_RI_PHYSICAL_MAXIMUM(16, 1),
-	HID_RI_REPORT_COUNT(8, 4),
-	HID_RI_REPORT_SIZE(8, 16),
-	HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
-	HID_RI_END_COLLECTION(0),
-	HID_RI_USAGE_PAGE(8, 0x09),
-	HID_RI_USAGE_MINIMUM(8, 0x01),
-	HID_RI_USAGE_MAXIMUM(8, Buttons),
-	HID_RI_LOGICAL_MINIMUM(8, 0x00),
-	HID_RI_LOGICAL_MAXIMUM(8, 0x01),
-	HID_RI_REPORT_SIZE(8, 0x01),
-	HID_RI_REPORT_COUNT(8, Buttons),
-	HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
-	HID_RI_REPORT_SIZE(8, (Buttons % 8) ? (8 - (Buttons % 8)) : 0),
-	HID_RI_REPORT_COUNT(8, 0x01),
-	HID_RI_INPUT(8, HID_IOF_CONSTANT),
-	HID_RI_END_COLLECTION(0)
+
+	HID_RI_USAGE_PAGE(8, 0x01), // Generic Desktop
+	HID_RI_USAGE(8, 0x04), // 4 = Joystick, 3 = Game Pad
+		HID_RI_COLLECTION(8, 0x01), // Application
+
+			// new page (wheel)
+			HID_RI_USAGE_PAGE(8, 0x02), // Automobile Simulation Device
+				HID_RI_USAGE(8, 0xc8), // Steering
+				HID_RI_LOGICAL_MINIMUM(16, -5000),
+				HID_RI_LOGICAL_MAXIMUM(16, 5000),
+				HID_RI_REPORT_SIZE(8, 16),
+				HID_RI_REPORT_COUNT(8, 1),
+				HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+
+			// new page (pedals)
+			HID_RI_USAGE_PAGE(8, 0x01), // Generic
+				HID_RI_COLLECTION(8, 0x01), // new collection (pedals)
+					HID_RI_USAGE(8, 0x35), // Clutch
+					HID_RI_USAGE(8, 0x34), // Brake
+					HID_RI_USAGE(8, 0x33), // Accelerator
+					HID_RI_LOGICAL_MINIMUM(16, 0),
+					HID_RI_LOGICAL_MAXIMUM(16, 4095),
+					HID_RI_REPORT_SIZE(8, 16),
+					HID_RI_REPORT_COUNT(8, 3),
+					HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+				HID_RI_END_COLLECTION(0),
+			
+			// new page (buttons)
+			HID_RI_USAGE_PAGE(8, 0x09), // Button
+				HID_RI_USAGE_MINIMUM(8, 1),
+				HID_RI_USAGE_MAXIMUM(8, 16),
+				HID_RI_LOGICAL_MINIMUM(8, 0),
+				HID_RI_LOGICAL_MAXIMUM(8, 1),
+				HID_RI_REPORT_SIZE(8, 1), // 1 bit per button
+				HID_RI_REPORT_COUNT(8, 16), // 16 buttons
+				HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+				HID_RI_REPORT_SIZE(8, 0),
+				HID_RI_REPORT_COUNT(8, 1),
+				HID_RI_INPUT(8, HID_IOF_CONSTANT),
+
+		HID_RI_END_COLLECTION(0)
 };
 
 /** Device descriptor structure. This descriptor, located in FLASH memory, describes the overall
@@ -102,8 +113,8 @@ const USB_Descriptor_Device_t PROGMEM DeviceDescriptor =
 
 	.Endpoint0Size          = FIXED_CONTROL_ENDPOINT_SIZE,
 
-	.VendorID               = 0x03EB,
-	.ProductID              = 0x2043,
+	.VendorID               = 0x4A59,
+	.ProductID              = 0x0001,
 	.ReleaseNumber          = VERSION_BCD(00.01),
 
 	.ManufacturerStrIndex   = STRING_ID_Manufacturer,
@@ -169,7 +180,7 @@ const USB_Descriptor_Configuration_t PROGMEM ConfigurationDescriptor =
 			.EndpointAddress        = JOYSTICK_EPADDR,
 			.Attributes             = (EP_TYPE_INTERRUPT | ENDPOINT_ATTR_NO_SYNC | ENDPOINT_USAGE_DATA),
 			.EndpointSize           = JOYSTICK_EPSIZE,
-			.PollingIntervalMS      = 0x05
+			.PollingIntervalMS      = 1 /* polling interval in ms */
 		}
 };
 
@@ -190,9 +201,9 @@ const USB_Descriptor_String_t PROGMEM LanguageString =
  */
 const USB_Descriptor_String_t PROGMEM ManufacturerString =
 {
-	.Header                 = {.Size = USB_STRING_LEN(11), .Type = DTYPE_String},
+	.Header                 = {.Size = USB_STRING_LEN(8), .Type = DTYPE_String},
 
-	.UnicodeString          = L"Dean Camera"
+	.UnicodeString          = L"@JariInc"
 };
 
 /** Product descriptor string. This is a Unicode string containing the product's details in human readable form,
@@ -201,9 +212,9 @@ const USB_Descriptor_String_t PROGMEM ManufacturerString =
  */
 const USB_Descriptor_String_t PROGMEM ProductString =
 {
-	.Header                 = {.Size = USB_STRING_LEN(18), .Type = DTYPE_String},
+	.Header                 = {.Size = USB_STRING_LEN(10), .Type = DTYPE_String},
 
-	.UnicodeString          = L"LUFA Joystick Demo"
+	.UnicodeString          = L"Hacked G25"
 };
 
 /** This function is called by the library when in device mode, and must be overridden (see library "USB Descriptors"

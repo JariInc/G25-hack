@@ -262,12 +262,22 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 	USB_JoystickReport_Data_t* JoystickReport = (USB_JoystickReport_Data_t*)ReportData;
 	
 	JoystickReport->Wheel = wheelpos;
-	JoystickReport->Throttle = 0xfff - (int16_t)ADCGetValue(0);
-	JoystickReport->Brake = 0xfff - (int16_t)ADCGetValue(1);
-	JoystickReport->Clutch = 0xfff - (int16_t)ADCGetValue(2);
+	
+	
+	JoystickReport->Throttle = 0xfff - ADCGetValue(0);
+	JoystickReport->Brake = 0xfff - ADCGetValue(1);
+	JoystickReport->Clutch = 0xfff - ADCGetValue(2);
+	
 	//JoystickReport->Clutch = ADCGetValue(3) - currentoffset;
 	JoystickReport->Button = ((PIND >> 2) & 0b11) ^ 0b11; // read button states and invert them
-
+	
+	/*
+	uint8_t btns = ((PIND >> 2) & 0b11) ^ 0b11;
+	if(btns & 0b01)
+		JoystickReport->Button++;
+	else if(btns & 0b10)
+		JoystickReport->Button--;
+	*/
 	/*
 	JoystickReport->Clutch = force;
 	JoystickReport->Brake = dbg_fb;
@@ -275,7 +285,7 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 
 	*ReportSize = sizeof(USB_JoystickReport_Data_t);
 	
-	return true;
+	return false;
 }
 
 /** HID class driver callback function for the processing of HID reports from the host.
