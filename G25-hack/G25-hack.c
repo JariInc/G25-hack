@@ -36,12 +36,13 @@
 
 #include "G25-hack.h"
 #include "pid.h"
+#include "ffb.h"
 
 /** Buffer to hold the previously generated HID report, for comparison purposes inside the HID class driver. */
 static uint8_t PrevJoystickHIDReportBuffer[sizeof(USB_JoystickReport_Data_t)];
 
 // wheel position
-static int16_t wheelpos = 0;
+static uint16_t wheelpos = 0;
 
 // current offset
 static uint16_t currentoffset = 0;
@@ -53,7 +54,7 @@ static uint16_t currentoffset = 0;
 //static int16_t dbg_fb = 0;
 
 // (requested) force value
-static int16_t force = 0;
+int16_t force;
 
 /** LUFA HID Class driver interface configuration and state information. This structure is
  *  passed to all HID Class driver functions, so that multiple instances of the same class
@@ -75,6 +76,19 @@ USB_ClassInfo_HID_Device_t Joystick_HID_Interface =
 			},
 	};
 
+USB_ClassInfo_HID_Device_t FFB_HID_Interface =
+{
+	.Config =
+	{
+		.InterfaceNumber              = 0,
+		.ReportINEndpoint             =
+		{
+			.Address              = FFB_EPADDR,
+			.Size                 = FFB_EPSIZE,
+			.Banks                = 1,
+		}
+	},
+};
 
 /** Main program entry point. This routine contains the overall program flow, including initial
  *  setup of all components and the main program loop.
@@ -87,7 +101,7 @@ int main(void)
 	
 	for (;;)
 	{
-		HID_Device_USBTask(&Joystick_HID_Interface);
+		HID_Task();
 		USB_USBTask();
 	}
 }
@@ -212,97 +226,218 @@ void EVENT_USB_Device_ConfigurationChanged(void)
 {
 	bool ConfigSuccess = true;
 
-	ConfigSuccess &= HID_Device_ConfigureEndpoints(&Joystick_HID_Interface);
-
-	USB_Device_EnableSOFEvents();
+	ConfigSuccess &= Endpoint_ConfigureEndpoint(JOYSTICK_EPADDR, EP_TYPE_INTERRUPT, JOYSTICK_EPSIZE, 1);
+	ConfigSuccess &= Endpoint_ConfigureEndpoint(FFB_EPADDR, EP_TYPE_INTERRUPT, FFB_EPSIZE, 1);
 }
 
 /** Event handler for the library USB Control Request reception event. */
 void EVENT_USB_Device_ControlRequest(void)
 {
-	//HID_Device_ProcessControlRequest(&Joystick_HID_Interface);
-	if (USB_ControlRequest.bmRequestType == 64) {
-		
-		// use union to represent received unsigned as signed integer
-		union {
-			int16_t sval;
-			uint16_t uval;
-		} forceval;
-		
-		forceval.uval = USB_ControlRequest.wValue;
-		force = forceval.sval;
-		Endpoint_ClearStatusStage();
+	/* Handle HID Class specific requests */
+
+	/*
+	USB_ControlRequest :=
+		uint8_t 	bmRequestType
+		uint8_t 	bRequest
+		uint16_t 	wValue
+		uint16_t 	wIndex
+		uint16_t 	wLength
+	*/
+	/* Handle HID Class specific requests */
+	switch (USB_ControlRequest.bRequest)
+	{
+		case HID_REQ_GetReport:
+			if (USB_ControlRequest.bmRequestType == (REQDIR_DEVICETOHOST | REQTYPE_CLASS | REQREC_INTERFACE))
+			{
+				if (USB_ControlRequest.wValue == 0x0307) {
+					// Feature 3: PID Pool Feature Report
+					USB_FFBReport_PIDPool_Feature_Data_t featureData;
+					FfbOnPIDPool(&featureData);
+
+					Endpoint_ClearSETUP();
+
+					// Write the report data to the control endpoint
+					Endpoint_Write_Control_Stream_LE(&featureData, sizeof(USB_FFBReport_PIDPool_Feature_Data_t));
+					Endpoint_ClearOUT();
+				}
+				else {
+					// Joystick report
+					USB_JoystickReport_Data_t JoystickReportData;
+
+					/* Create the next HID report to send to the host */
+					GetNextReport(&JoystickReportData);
+
+					Endpoint_ClearSETUP();
+
+					/* Write the report data to the control endpoint */
+					Endpoint_Write_Control_Stream_LE(&JoystickReportData, sizeof(JoystickReportData));
+					Endpoint_ClearOUT();
+				}
+			}
+			/*
+			else if (USB_ControlRequest.bmRequestType == (REQDIR_HOSTTODEVICE | REQTYPE_VENDOR)) {
+				// use union to represent received unsigned as signed integer
+				union {
+					int16_t sval;
+					uint16_t uval;
+				} forceval;
+			
+				forceval.uval = USB_ControlRequest.wValue;
+				force = forceval.sval;
+				Endpoint_ClearStatusStage();
+			}
+			*/
+			break;
+		case HID_REQ_SetReport:
+			if (USB_ControlRequest.bmRequestType == (REQDIR_HOSTTODEVICE | REQTYPE_CLASS | REQREC_INTERFACE)) {
+				Endpoint_ClearSETUP();
+
+				uint8_t data[10];	// This is enough room for all reports
+				uint16_t len = 0;	// again, enough for all
+
+				len = USB_ControlRequest.wLength;
+				
+				// Read in the report data from host
+
+				// Read the report data from the control endpoint
+				Endpoint_Read_Control_Stream_LE(&data, len);
+				Endpoint_ClearStatusStage();
+
+				// Process the incoming report
+				if (USB_ControlRequest.wValue == 0x0305) {
+					// Feature 1
+					_delay_us(500);	// Windows does not like to be answered too quickly
+
+					USB_FFBReport_PIDBlockLoad_Feature_Data_t pidBlockLoadData;
+					FfbOnCreateNewEffect((USB_FFBReport_CreateNewEffect_Feature_Data_t*) data, &pidBlockLoadData);
+
+					Endpoint_ClearSETUP();
+
+					// Write the report data to the control endpoint
+					Endpoint_Write_Control_Stream_LE(&pidBlockLoadData, sizeof(USB_FFBReport_PIDBlockLoad_Feature_Data_t));
+					Endpoint_ClearOUT();
+				}
+				else if (USB_ControlRequest.wValue == 0x0306) {
+					// Feature 1
+					// ???? What should be returned here?
+				}
+				else if (USB_ControlRequest.wValue == 0x0307) {
+					// Feature 1
+					// ???? What should be returned here?
+				}
+			}
+			break;
 	}
-	else
-		HID_Device_ProcessControlRequest(&Joystick_HID_Interface);
 }
 
-/** Event handler for the USB device Start Of Frame event. */
-void EVENT_USB_Device_StartOfFrame(void)
-{
-	HID_Device_MillisecondElapsed(&Joystick_HID_Interface);
-}
-
-/** HID class driver callback function for the creation of HID reports to the host.
+/** Fills the given HID report data structure with the next HID report to send to the host.
  *
- *  \param[in]     HIDInterfaceInfo  Pointer to the HID class interface configuration structure being referenced
- *  \param[in,out] ReportID    Report ID requested by the host if non-zero, otherwise callback should set to the generated report ID
- *  \param[in]     ReportType  Type of the report to create, either HID_REPORT_ITEM_In or HID_REPORT_ITEM_Feature
- *  \param[out]    ReportData  Pointer to a buffer where the created report should be stored
- *  \param[out]    ReportSize  Number of bytes written in the report (or zero if no report is to be sent)
+ *  \param[out] ReportData  Pointer to a HID report data structure to be filled
  *
- *  \return Boolean \c true to force the sending of the report, \c false to let the library determine if it needs to be sent
+ *  \return Boolean \c true if the new report differs from the last report, \c false otherwise
  */
-bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDInterfaceInfo,
-                                         uint8_t* const ReportID,
-                                         const uint8_t ReportType,
-                                         void* ReportData,
-                                         uint16_t* const ReportSize)
+bool GetNextReport(USB_JoystickReport_Data_t* const ReportData)
 {
-	USB_JoystickReport_Data_t* JoystickReport = (USB_JoystickReport_Data_t*)ReportData;
-	
-	JoystickReport->Wheel = wheelpos;
-	
-	
-	JoystickReport->Throttle = 0xfff - ADCGetValue(0);
-	JoystickReport->Brake = 0xfff - ADCGetValue(1);
-	JoystickReport->Clutch = 0xfff - ADCGetValue(2);
-	
-	//JoystickReport->Clutch = ADCGetValue(3) - currentoffset;
-	JoystickReport->Button = ((PIND >> 2) & 0b11) ^ 0b11; // read button states and invert them
-	
 	/*
-	uint8_t btns = ((PIND >> 2) & 0b11) ^ 0b11;
-	if(btns & 0b01)
-		JoystickReport->Button++;
-	else if(btns & 0b10)
-		JoystickReport->Button--;
-	*/
-	/*
-	JoystickReport->Clutch = force;
-	JoystickReport->Brake = dbg_fb;
+	static uint8_t PrevJoyStatus    = 0;
+	static uint8_t PrevButtonStatus = 0;
+	uint8_t        JoyStatus_LCL    = Joystick_GetStatus();
+	uint8_t        ButtonStatus_LCL = Buttons_GetStatus();
+	bool           InputChanged     = true;
 	*/
 
-	*ReportSize = sizeof(USB_JoystickReport_Data_t);
-	
-	return false;
-}
+	/* Clear the report contents */
+	memset(ReportData, 0, sizeof(USB_JoystickReport_Data_t));
 
-/** HID class driver callback function for the processing of HID reports from the host.
- *
- *  \param[in] HIDInterfaceInfo  Pointer to the HID class interface configuration structure being referenced
- *  \param[in] ReportID    Report ID of the received report from the host
- *  \param[in] ReportType  The type of report that the host has sent, either HID_REPORT_ITEM_Out or HID_REPORT_ITEM_Feature
- *  \param[in] ReportData  Pointer to a buffer where the received report has been stored
- *  \param[in] ReportSize  Size in bytes of the received HID report
- */
-void CALLBACK_HID_Device_ProcessHIDReport(USB_ClassInfo_HID_Device_t* const HIDInterfaceInfo,
-                                          const uint8_t ReportID,
-                                          const uint8_t ReportType,
-                                          const void* ReportData,
-                                          const uint16_t ReportSize)
+	ReportData->reportId = 1;
+	ReportData->Wheel = wheelpos;
+	ReportData->Throttle = 0xfff - ADCGetValue(0);
+	ReportData->Brake = 0xfff - ADCGetValue(1);
+	ReportData->Clutch = 0xfff - ADCGetValue(2);
+	ReportData->Button = ((PIND >> 2) & 0b11) ^ 0b11; // read button states and invert them
+
+	/* Check if the new report is different to the previous report */
+	//InputChanged = (uint8_t)(PrevJoyStatus ^ JoyStatus_LCL) | (uint8_t)(PrevButtonStatus ^ ButtonStatus_LCL);
+
+	/* Save the current joystick status for later comparison */
+	//PrevJoyStatus    = JoyStatus_LCL;
+	//PrevButtonStatus = ButtonStatus_LCL;
+
+	/* Return whether the new report is different to the previous report or not */
+	return true; //InputChanged;
+}
+/** Function to manage HID report generation and transmission to the host. */
+void HID_Task(void)
 {
-	// Unused (but mandatory for the HID class driver) in this demo, since there are no Host->Device reports
+	/* Device must be connected and configured for the task to run */
+	if (USB_DeviceState != DEVICE_STATE_Configured)
+		return;
+
+	
+	/* Select the Joystick Report Endpoint */
+	Endpoint_SelectEndpoint(JOYSTICK_EPADDR);
+
+	/* Check to see if the host is ready for another packet */
+	if (Endpoint_IsINReady())
+	{
+		USB_JoystickReport_Data_t JoystickReportData;
+
+		/* Create the next HID report to send to the host */
+		GetNextReport(&JoystickReportData);
+
+		/* Write Joystick Report Data */
+		Endpoint_Write_Stream_LE(&JoystickReportData, sizeof(JoystickReportData), NULL);
+
+		/* Finalize the stream transfer to send the last packet */
+		Endpoint_ClearIN();
+
+		/* Clear the report data afterwards */
+		memset(&JoystickReportData, 0, sizeof(JoystickReportData));
+	}
+
+	// Receive FFB data
+	Endpoint_SelectEndpoint(FFB_EPADDR);
+
+	if (Endpoint_IsOUTReceived()) {
+		uint8_t out_ffbdata[64];	// enough for any single OUT-report
+		uint8_t total_bytes_read = 0;
+		
+		while (Endpoint_BytesInEndpoint() && total_bytes_read < 64)
+		{
+			uint16_t out_wait_report_bytes = 0; //, out_report_data_read = 0;
+
+			// Read the reportID from the package to determine amount of data to expect next
+			while (Endpoint_Read_Stream_LE(&out_ffbdata, 1, NULL) == ENDPOINT_RWSTREAM_IncompleteTransfer) {
+				// busy loop until the first byte is read out
+			}
+
+			total_bytes_read += 1;
+
+			out_wait_report_bytes = OutReportSize[out_ffbdata[0]-1] - 1;
+			if (out_wait_report_bytes + total_bytes_read >= 64)
+			{
+				while (1)  {
+					//LEDs_SetAllLEDs(LEDS_NO_LEDS);
+					_delay_ms(100);
+					//LEDs_SetAllLEDs(LEDS_ALL_LEDS);
+					_delay_ms(100); 
+				}
+			}
+
+			//out_report_data_read = 0;
+			while (Endpoint_Read_Stream_LE(&out_ffbdata[1], out_wait_report_bytes, NULL) == ENDPOINT_RWSTREAM_IncompleteTransfer) {
+				// busy loop until the rest of the report data is read out
+			}
+
+			total_bytes_read += out_wait_report_bytes;
+
+			FfbOnUsbData(out_ffbdata, out_wait_report_bytes + 1);
+			_delay_ms(1);
+		}
+		
+		// Clear the endpoint ready for new packet
+		Endpoint_ClearOUT();
+	}
 }
 
 // ADC (MCP3204)
@@ -325,12 +460,12 @@ void WheelCalibration() {
 			1. Rotate left until limit is reached
 			2. Mark position 0
 			3. Rotate right until limit is reached
-			4. Get position on right edge, offset position by half of the value
-			   - Presume center is between left and right edge
+			4. Get position on right edge, center is half of the position value at the right
 			5. Rotate back to center
 	*/
 	
 	//forceoffset = 0;
+	wheelpos = INT16_MAX; // assume worst case, right edge
 	int16_t prev_wheelpos = wheelpos;
 	uint16_t velocity = 0;
 	//int16_t force = 0;
@@ -351,7 +486,7 @@ void WheelCalibration() {
 	do {
 		// fast 3000 positions
 		// full speed 6000 positions
-		if(wheelpos < -3000) {
+		if(wheelpos < INT16_MAX-3000) {
 			FORCE_LEFT(0x1ff);
 		}
 		// then slow down
@@ -386,11 +521,12 @@ void WheelCalibration() {
 	FORCE_STOP();
 	
 	// step 4
-	wheelpos = (wheelpos >> 1);
+	//wheelpos = (wheelpos >> 1);
+	uint16_t center = wheelpos >> 1;
 	
 	// step 5
 	do {
-		if(wheelpos > 500) {
+		if(wheelpos > center+500) {
 			FORCE_LEFT(0x3ff);
 		}
 		// then slow down
@@ -398,13 +534,13 @@ void WheelCalibration() {
 			FORCE_LEFT(0xff);
 		}
 		_delay_ms(CALIBDELAY);
-	} while (wheelpos > 0);
+	} while (wheelpos > center);
 	
 	// brake and slowly rotate to center
 	do {
 		FORCE_RIGHT(0xff);
 		_delay_ms(CALIBDELAY);
-	} while (wheelpos > 0);
+	} while (wheelpos < center);
 	
 	FORCE_STOP();
 }

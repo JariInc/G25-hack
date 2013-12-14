@@ -54,6 +54,7 @@
 			USB_Descriptor_Interface_t            HID_Interface;
 			USB_HID_Descriptor_HID_t              HID_JoystickHID;
 	        USB_Descriptor_Endpoint_t             HID_ReportINEndpoint;
+			USB_Descriptor_Endpoint_t             HID_ReportOUTEndpoint;
 		} USB_Descriptor_Configuration_t;
 
 		/** Enum for the device string descriptor IDs within the device. Each string descriptor should
@@ -70,16 +71,17 @@
 	/* Macros: */
 		/** Endpoint address of the Joystick HID reporting IN endpoint. */
 		#define JOYSTICK_EPADDR              (ENDPOINT_DIR_IN | 1)
+		#define FFB_EPADDR                   (ENDPOINT_DIR_OUT | 2)
 
 		/** Size in bytes of the Joystick HID reporting IN endpoint. */
-		#define JOYSTICK_EPSIZE              10
+		#define JOYSTICK_EPSIZE              16
+		#define FFB_EPSIZE                   64
 
-	/* Function Prototypes: *//*
+	/* Function Prototypes: */
 		uint16_t CALLBACK_USB_GetDescriptor(const uint16_t wValue,
 		                                    const uint8_t wIndex,
 		                                    const void** const DescriptorAddress)
 		                                    ATTR_WARN_UNUSED_RESULT ATTR_NON_NULL_PTR_ARG(3);
-											*/
 
 #endif
 
