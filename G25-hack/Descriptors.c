@@ -60,16 +60,13 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM JoystickReport[] =
 		HID_RI_COLLECTION(8, 0x01), // Application
 			HID_RI_REPORT_ID(8, 0x01),	// REPORT_ID 
 			// new page (wheel)
-			HID_RI_USAGE_PAGE(8, 0x02), // Automobile Simulation Device
-				HID_RI_USAGE(8, 0xc8), // Steering
-				HID_RI_LOGICAL_MINIMUM(16, 0),
-				HID_RI_LOGICAL_MAXIMUM(16, 10000),
+			HID_RI_USAGE_PAGE(8, 0x01), // Automobile Simulation Device
+				HID_RI_USAGE(8, 0x30), // X
+				HID_RI_LOGICAL_MINIMUM(16, -5000),
+				HID_RI_LOGICAL_MAXIMUM(16, 5000),
 				HID_RI_REPORT_SIZE(8, 16),
 				HID_RI_REPORT_COUNT(8, 1),
 				HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
-
-			// new page (pedals)
-			HID_RI_USAGE_PAGE(8, 0x01), // Generic
 				HID_RI_COLLECTION(8, 0x01), // new collection (pedals)
 					HID_RI_USAGE(8, 0x35), // Clutch
 					HID_RI_USAGE(8, 0x34), // Brake

@@ -17,18 +17,18 @@ int16_t pid(int16_t input, int16_t feedback) {
 	else {
 		// Error
 		int16_t error = input - feedback;
-		error >>= 3;
+		//error >>= 2;
 
-		// Present
-		output += error;
+		// Proportional
+		output += error >> 2;
 
 		// Integral
 		integral += error;
-		integral >>= 4;
+		integral >>= 2;
 		output += integral;
 
 		// Clamp output to valid value
-		if(output <= 0)
+		if(output <= 16)
 			output = 0;
 		else if (output >= PID_MAX)
 			output = PID_MAX;

@@ -42,7 +42,7 @@
 static uint8_t PrevJoystickHIDReportBuffer[sizeof(USB_JoystickReport_Data_t)];
 
 // wheel position
-static uint16_t wheelpos = 0;
+static int16_t wheelpos = 0;
 
 // current offset
 static uint16_t currentoffset = 0;
@@ -167,13 +167,6 @@ void SetupHardware(void)
 	GlobalInterruptEnable();
 	WheelCalibration();
 	GlobalInterruptDisable();
-	
-	/*
-	// debug
-	DDRC |= (1 << DDC0);
-	PORTC |= (1 << DDC0);
-	PORTC &= ~(1 << DDC0);
-	*/
 
 	/*
 		Current offset
@@ -202,7 +195,7 @@ void SetupHardware(void)
 	*/
 	TCCR2A |= (0 << COM2A1) | (0 << COM2A0); // Set OC2A on Compare Match
 	TCCR2B |= (1 << CS22) | (1 << CS21) | (0 << CS20); // set prescaler to 1/256
-	OCR2A = /*156*/ 62; // 16MHz / (62*256) = 1008 Hz
+	OCR2A = /*156*/ 30; // 16MHz / (62*256) = 1008 Hz
 	TIMSK2 |= (1 << OCIE2A); // Enable timer ISR
 
 	/* 
@@ -455,96 +448,94 @@ uint16_t ADCGetValue(uint8_t ch) {
 }
 
 void WheelCalibration() {
-	/*
-		Calibration procedure:
-			1. Rotate left until limit is reached
-			2. Mark position 0
-			3. Rotate right until limit is reached
-			4. Get position on right edge, center is half of the position value at the right
-			5. Rotate back to center
-	*/
-	
-	//forceoffset = 0;
-	wheelpos = INT16_MAX; // assume worst case, right edge
-	int16_t prev_wheelpos = wheelpos;
-	uint16_t velocity = 0;
-	//int16_t force = 0;
-	
-	/* Find minimum force, needed at all?
-	// step 0
-	do {
-		force += 2;
-		FORCE_LEFT(force);
-		_delay_ms(CALIBDELAY);
-		velocity = wheelpos - prev_wheelpos;
-		prev_wheelpos = wheelpos;
-	} while (velocity < 1);
-	forceoffset = force;
-	*/
-	
-	// step 1
-	do {
-		// fast 3000 positions
-		// full speed 6000 positions
-		if(wheelpos < INT16_MAX-3000) {
-			FORCE_LEFT(0x1ff);
-		}
-		// then slow down
-		else {
-			FORCE_LEFT(0x2ff);
-		}
-		_delay_ms(CALIBDELAY);
-		velocity = wheelpos - prev_wheelpos;
-		prev_wheelpos = wheelpos;
-	} while (velocity > 0);
-	FORCE_STOP();
-	
-	// step 2
-	wheelpos = 0;
-	prev_wheelpos = 0;
-	
-	// step 3
-	do {
-		// full speed 7500 positions
-		if(wheelpos < 7500) {
-			FORCE_RIGHT(0x3ff);
-		}
-		// then slow down
-		else {
-			FORCE_RIGHT(0x1ff);
-		}
-		_delay_ms(CALIBDELAY);
-		velocity = prev_wheelpos - wheelpos;
-		prev_wheelpos = wheelpos;
-	} while (velocity > 0);
-	
-	FORCE_STOP();
-	
-	// step 4
-	//wheelpos = (wheelpos >> 1);
-	uint16_t center = wheelpos >> 1;
-	
-	// step 5
-	do {
-		if(wheelpos > center+500) {
-			FORCE_LEFT(0x3ff);
-		}
-		// then slow down
-		else {
-			FORCE_LEFT(0xff);
-		}
-		_delay_ms(CALIBDELAY);
-	} while (wheelpos > center);
-	
-	// brake and slowly rotate to center
-	do {
-		FORCE_RIGHT(0xff);
-		_delay_ms(CALIBDELAY);
-	} while (wheelpos < center);
-	
-	FORCE_STOP();
+        /*
+                Calibration procedure:
+                        1. Rotate left until limit is reached
+                        2. Mark position 0
+                        3. Rotate right until limit is reached
+                        4. Get position on right edge, offset position by half of the value
+                           - Presume center is between left and right edge
+                        5. Rotate back to center
+        */
+        
+        //forceoffset = 0;
+        int16_t prev_wheelpos = wheelpos;
+        uint16_t velocity = 0;
+        //int16_t force = 0;
+        
+        /* Find minimum force, needed at all?
+        // step 0
+        do {
+                force += 2;
+                FORCE_LEFT(force);
+                _delay_ms(CALIBDELAY);
+                velocity = wheelpos - prev_wheelpos;
+                prev_wheelpos = wheelpos;
+        } while (velocity < 1);
+        forceoffset = force;
+        */
+        
+        // step 1
+        do {
+                // fast 3000 positions
+                // full speed 6000 positions
+                if(wheelpos < -3000) {
+                        FORCE_LEFT(0x1ff);
+                }
+                // then slow down
+                else {
+                        FORCE_LEFT(0x2ff);
+                }
+                _delay_ms(CALIBDELAY);
+                velocity = wheelpos - prev_wheelpos;
+                prev_wheelpos = wheelpos;
+        } while (velocity > 0);
+        FORCE_STOP();
+        
+        // step 2
+        wheelpos = 0;
+        prev_wheelpos = 0;
+        
+        // step 3
+        do {
+                // full speed 7500 positions
+                if(wheelpos < 7500) {
+                        FORCE_RIGHT(0x3ff);
+                }
+                // then slow down
+                else {
+                        FORCE_RIGHT(0x1ff);
+                }
+                _delay_ms(CALIBDELAY);
+                velocity = prev_wheelpos - wheelpos;
+                prev_wheelpos = wheelpos;
+        } while (velocity > 0);
+        
+        FORCE_STOP();
+        
+        // step 4
+        wheelpos = (wheelpos >> 1);
+        
+        // step 5
+        do {
+                if(wheelpos > 500) {
+                        FORCE_LEFT(0x3ff);
+                }
+                // then slow down
+                else {
+                        FORCE_LEFT(0xff);
+                }
+                _delay_ms(CALIBDELAY);
+        } while (wheelpos > 0);
+        
+        // brake and slowly rotate to center
+        do {
+                FORCE_RIGHT(0xff);
+                _delay_ms(CALIBDELAY);
+        } while (wheelpos > 0);
+        
+        FORCE_STOP();
 }
-
 /* Interrupts */
 // Optical encoder
 ISR(INT0_vect) {

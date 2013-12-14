@@ -155,11 +155,30 @@ typedef struct {
 } USB_FFBReport_PIDPool_Feature_Data_t;
 
 typedef struct {
+	uint8_t command;	// always 0x23	-- start counting checksum from here
+	uint8_t waveForm;	// 2=sine, 5=Square, 6=RampUp, 7=RampDown, 8=Triange, 0x12=Constant
+	uint8_t unknown1;	// ? always 0x7F
+	uint16_t duration;	// unit=2ms
+	uint16_t unknown2;	// ? always 0x0000
+	uint16_t direction;
+	uint8_t	unknown3[5];	// ? always 7f 64 00 10 4e
+	uint8_t attackLevel;
+	uint16_t	attackTime;
+	uint8_t		magnitude;
+	uint16_t	fadeTime;
+	uint8_t	fadeLevel;
+	uint8_t	waveLength;	// 0x6F..0x01 => 1/Hz
+	uint8_t unknown5;	// ? always 0x00
+	uint16_t param1;	// Varies by effect type; Constant: positive=7f 00, negative=01 01, Other effects: 01 01
+	uint16_t param2;	// Varies by effect type; Constant: 00 00, Other effects 01 01
+} FFP_MIDI_Effect_Basic;
+
+typedef struct {
 	uint8_t state;                                                 // see constants <MEffectState_*>
 	uint16_t usb_duration, usb_fadeTime;                           // used to calculate fadeTime to MIDI, since in USB it is given as time difference from the end while in MIDI it is given as time from start
 	uint8_t usb_gain, usb_offset, usb_attackLevel, usb_fadeLevel;  // These are used to calculate effects of USB gain to MIDI data
 	uint8_t usb_magnitude;
-	//FFP_MIDI_Effect_Basic data;                                  // For FFP, this is enough for all types of effects - cast for other effect types when necessary
+	FFP_MIDI_Effect_Basic data;                                    // For FFP, this is enough for all types of effects - cast for other effect types when necessary
 } TEffectState;
 
 // ---- Input
