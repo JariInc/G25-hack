@@ -37,15 +37,14 @@
 #include "G25-hack.h"
 #include "pid.h"
 #include "ffb.h"
+#include "motor.h"
+#include "adc.h"
 
 /** Buffer to hold the previously generated HID report, for comparison purposes inside the HID class driver. */
 static uint8_t PrevJoystickHIDReportBuffer[sizeof(USB_JoystickReport_Data_t)];
 
 // wheel position
 static int16_t wheelpos = 0;
-
-// current offset
-static uint16_t currentoffset = 0;
 
 // force offset
 //static uint8_t forceoffset = 0;
@@ -137,17 +136,19 @@ void SetupHardware(void)
 		Buttons 
 	*/
 	// set as inputs
-	DDRD &= ~(1 << DDD2);
-	DDRD &= ~(1 << DDD3);
-	PORTD |= (1 << DDD2) | (1 << DDD3); 
+	DDRD &= ~(1 << DDD6);
+	DDRD &= ~(1 << DDD7);
+	PORTD |= (1 << DDD6) | (1 << DDD7); 
 	
 	/*
 		SPI (using LUFA helper)
 	*/
 	SPI_Init(SPI_MODE_MASTER | SPI_SPEED_FCPU_DIV_8);
-	// CS (PB0) as output
-	DDRB |= (1 << DDB0);
-	PORTB |= (1 << DDB0);
+
+	/*
+		ADC
+	*/
+	initADC();
 	
 	/* 
 		PWM
@@ -164,39 +165,22 @@ void SetupHardware(void)
 	TCCR1A |= (1 << COM1B1)|(0 << COM1B0); // set Compare Output Mode
 	OCR1B = 0; // set zero 
 	
+	/*
+		PID
+	*/
+	initPID();
+
+	/*
+		Serial
+	*/
+	Serial_Init(38400, false);
+
+	/*
+		Calibration
+	*/
 	GlobalInterruptEnable();
 	WheelCalibration();
 	GlobalInterruptDisable();
-
-	/*
-		Current offset
-	*/
-	// do conversion and wait a bit, otherwise first measurement is way off
-	ADCGetValue(3);
-	_delay_ms(10);
-
-	// find max
-	currentoffset = ADCGetValue(3);
-	uint8_t i = 0;
-	int16_t current = 0;
-	while(i < (1 << 3)) {
-		current = ADCGetValue(3) - currentoffset;
-		if(current > 0) {
-			currentoffset++;
-			i = 0;
-		}
-		else
-			i++;
-		_delay_ms(10);
-	}
-	
-	/*
-		PID timer
-	*/
-	TCCR2A |= (0 << COM2A1) | (0 << COM2A0); // Set OC2A on Compare Match
-	TCCR2B |= (1 << CS22) | (1 << CS21) | (0 << CS20); // set prescaler to 1/256
-	OCR2A = /*156*/ 30; // 16MHz / (62*256) = 1008 Hz
-	TIMSK2 |= (1 << OCIE2A); // Enable timer ISR
 
 	/* 
 		USB Initialization
@@ -347,7 +331,7 @@ bool GetNextReport(USB_JoystickReport_Data_t* const ReportData)
 	ReportData->Throttle = 0xfff - ADCGetValue(0);
 	ReportData->Brake = 0xfff - ADCGetValue(1);
 	ReportData->Clutch = 0xfff - ADCGetValue(2);
-	ReportData->Button = ((PIND >> 2) & 0b11) ^ 0b11; // read button states and invert them
+	ReportData->Button = ((PIND >> 6) & 0b11) ^ 0b11; // read button states and invert them
 
 	/* Check if the new report is different to the previous report */
 	//InputChanged = (uint8_t)(PrevJoyStatus ^ JoyStatus_LCL) | (uint8_t)(PrevButtonStatus ^ ButtonStatus_LCL);
@@ -433,20 +417,6 @@ void HID_Task(void)
 	}
 }
 
-// ADC (MCP3204)
-uint16_t ADCGetValue(uint8_t ch) {
-	uint16_t output = 0;
-	ATOMIC_BLOCK(ATOMIC_FORCEON)
-	{
-		PORTB &= ~(1 << DDB0); // CS low to activate
-		SPI_SendByte(0b00000110); // start conversion command
-		output = SPI_TransferByte(ch << 6) << 8; // read 4 MSB
-		output |= SPI_TransferByte(0xff); // read rest
-	}
-	PORTB |= (1 << DDB0); // CS high to deactivate
-	return output & 0xfff;
-}
-
 void WheelCalibration() {
         /*
                 Calibration procedure:
@@ -457,6 +427,9 @@ void WheelCalibration() {
                            - Presume center is between left and right edge
                         5. Rotate back to center
         */
+
+		// disable force
+		stopPID();
         
         //forceoffset = 0;
         int16_t prev_wheelpos = wheelpos;
@@ -535,6 +508,8 @@ void WheelCalibration() {
         } while (wheelpos > 0);
         
         FORCE_STOP();
+
+		startPID();
 }
 /* Interrupts */
 // Optical encoder
@@ -552,28 +527,4 @@ ISR(INT1_vect) {
 		wheelpos++;
 	else
 		wheelpos--;
-}
-
-// PID timer
-ISR(TIMER2_COMPA_vect)
-{
-	uint16_t pid_value;
-	int16_t feedback = ADCGetValue(3) - currentoffset;
-	if(feedback < 0)
-		feedback = 0;
-	//dbg_fb = feedback;
-
-	if(force == 0) {
-		FORCE_STOP()
-	}
-	if(force > 0) {
-		pid_value = pid(force, feedback);
-		FORCE_LEFT(pid_value);
-	}
-	else {
-		pid_value = pid(-force, feedback);
-		FORCE_RIGHT(pid_value);
-	}
-	
-	TCNT2 = 0;
 }

@@ -11,11 +11,14 @@
 
 #include <stdint.h>
 
-#define PID_MAX 1023
+#define PID_MAX 2047
 
 // (requested) force value
 extern int16_t force;
 
 int16_t pid(int16_t input, int16_t feedback);
+void initPID();
+void startPID();
+void stopPID();
 
 #endif /* PID_H_ */

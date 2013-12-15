@@ -52,6 +52,9 @@
  * running the ASF driver selector tool. Any changes will be discarded.
  */
 
+// From module: LUFA ANSI Terminal Commands
+#include <LUFA/Drivers/Misc/TerminalCodes.h>
+
 // From module: LUFA Common Infrastructure
 #include <LUFA/Common/Common.h>
 #include <LUFA/Version.h>
@@ -61,6 +64,9 @@
 
 // From module: LUFA SPI Driver - AVR8
 #include <LUFA/Drivers/Peripheral/SPI.h>
+
+// From module: LUFA USART Driver - AVR8
+#include <LUFA/Drivers/Peripheral/Serial.h>
 
 // From module: LUFA USB Driver
 #include <LUFA/Drivers/USB/USB.h>

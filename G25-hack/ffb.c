@@ -379,7 +379,7 @@ void FfbHandle_SetConstantForce(USB_FFBReport_SetConstantForce_Output_Data_t *da
 		int16_t magnitude;	// -255..255
 
 	*/
-	force = data->magnitude << 2;
+	force = data->magnitude << 3;
 }
 
 void FfbHandle_DeviceControl(USB_FFBReport_DeviceControl_Output_Data_t *data) {

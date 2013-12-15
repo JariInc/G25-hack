@@ -41,7 +41,6 @@
 		#include <avr/wdt.h>
 		#include <avr/power.h>
 		#include <avr/interrupt.h>
-		#include <util/atomic.h>
 		#include <util/delay.h>
 		#include <string.h>
 
@@ -49,9 +48,9 @@
 
 		#include <LUFA/Drivers/USB/USB.h>
 		#include <LUFA/Platform/Platform.h>
-
 		#include <LUFA/Drivers/Peripheral/SPI.h>
-		
+		#include <LUFA/Drivers/Peripheral/Serial.h>
+
 	/* Type Defines: */
 		/** Type define for the joystick HID report structure, for creating and sending HID reports to the host PC.
 		 *  This mirrors the layout described to the host in the HID report descriptor, in Descriptors.c.
@@ -67,14 +66,6 @@
 		} USB_JoystickReport_Data_t;
 
 	/* Macros: */
-		#define FORCE_LEFT(value)	OCR1B = (value) & 0x3ff;\
-									OCR1C = 0;
-									
-		#define FORCE_RIGHT(value)	OCR1B = 0;\
-									OCR1C = (value) & 0x3ff;
-									
-		#define FORCE_STOP()		OCR1B = 0;\
-									OCR1C = 0;
 																
 		// how long (ms) to wait before checking wheel position for movement, 3 too low, 4 works, 5 safe
 		#define CALIBDELAY	5
